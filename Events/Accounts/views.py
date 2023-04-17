@@ -8,8 +8,13 @@ from django.contrib.auth import authenticate, login, logout
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
-from EventAPP.models import Events
+from EventAPP.models import Events, Participants
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet, CharFilter
+from django.core.mail import EmailMultiAlternatives
+from django.dispatch import receiver
+from django.urls import reverse
+from django_rest_passwordreset.signals import reset_password_token_created
+
 
 # Create your views here.
 
@@ -117,10 +122,7 @@ class ChangePASS(views.APIView):
 
 
 
-from django.core.mail import EmailMultiAlternatives
-from django.dispatch import receiver
-from django.urls import reverse
-from django_rest_passwordreset.signals import reset_password_token_created
+
 
 @receiver(reset_password_token_created)
 def password_reset_token_created(sender, instance, reset_password_token, *args, **kwargs):
@@ -136,5 +138,32 @@ def password_reset_token_created(sender, instance, reset_password_token, *args, 
         # to:
         [reset_password_token.user.email]
     )
-    # msg.attach_alternative(email_html_message, "text/html")
     msg.send()
+
+
+
+
+class ViewProfile(views.APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        user = User.objects.get(id = request.user.id)
+        profile = Profile.objects.get(user = request.user)
+        data = {
+            "User":user.username,
+            "Email":user.email,
+            "Address":profile.address,
+            "Age":profile.age,
+        }
+        event_data = Participants.objects.filter(user = request.user)
+        events = []
+        for i in event_data:
+            events.append(i.event_name.event_name)
+        data['Events'] = events
+        return Response(data)
+    
+
+class ReportOfEvents(views.APIView):
+    def get(self, request):
+        event = Events.objects.prefetch_related('participants').filter(start_at__gte = request.data['date_from'], ends_at__lte = request.data['till_date'])
+        d = EventSerializer(event, many=True)
+        return Response(d.data)    
